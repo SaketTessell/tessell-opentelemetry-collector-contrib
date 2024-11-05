@@ -22,11 +22,27 @@ type clientAuthenticator struct {
 	clientCredentials *clientCredentialsConfig
 	logger            *zap.Logger
 	client            *http.Client
+	headers           map[string]string
 }
 
 type errorWrappingTokenSource struct {
 	ts       oauth2.TokenSource
 	tokenURL string
+}
+
+type CustomTransport struct {
+	*oauth2.Transport
+	Headers map[string]string
+}
+
+func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Add headers from the config to each request
+	for key, value := range ct.Headers {
+		req.Header.Set(key, value)
+	}
+
+	// Forward the request to the base RoundTripper
+	return ct.Transport.RoundTrip(req)
 }
 
 // errorWrappingTokenSource implements TokenSource
@@ -61,6 +77,7 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 			Transport: transport,
 			Timeout:   cfg.Timeout,
 		},
+		headers: cfg.Headers,
 	}, nil
 }
 
@@ -78,12 +95,15 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 // also auto refreshes OAuth tokens as needed.
 func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTripper, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
-	return &oauth2.Transport{
-		Source: errorWrappingTokenSource{
-			ts:       o.clientCredentials.TokenSource(ctx),
-			tokenURL: o.clientCredentials.TokenURL,
+	return &CustomTransport{
+		Transport: &oauth2.Transport{
+			Source: errorWrappingTokenSource{
+				ts:       o.clientCredentials.TokenSource(ctx),
+				tokenURL: o.clientCredentials.TokenURL,
+			},
+			Base: base,
 		},
-		Base: base,
+		Headers: o.headers,
 	}, nil
 }
 

@@ -54,6 +54,9 @@ type Config struct {
 	// Timeout parameter configures `http.Client.Timeout` for the underneath client to authorization
 	// server while fetching and refreshing tokens.
 	Timeout time.Duration `mapstructure:"timeout,omitempty"`
+
+	// Headers specifies additional headers for requests to the token endpoint.
+	Headers map[string]string `mapstructure:"headers,omitempty"`
 }
 
 var _ component.Config = (*Config)(nil)

@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/extension/auth"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/oauth2clientauthextension/internal/metadata"
+	"github.com/SaketTessell/tessell-opentelemetry-collector-contrib/extension/oauth2clientauthextension/internal/metadata"
 )
 
 // NewFactory creates a factory for the oauth2 client Authenticator extension.

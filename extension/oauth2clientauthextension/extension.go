@@ -28,22 +28,33 @@ type clientAuthenticator struct {
 
 type errorWrappingTokenSource struct {
 	ts       oauth2.TokenSource
+	logger   *zap.Logger
 	tokenURL string
 }
 
 type CustomTransport struct {
 	*oauth2.Transport
+	logger  *zap.Logger
 	Headers map[string]string
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	fmt.Print("Got the round trip request")
+	ct.logger.Info("Got the round trip request")
 	// Add headers from the config to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)
 	}
 
-	fmt.Println("Request Headers:", req.Header)
+	ct.logger.Info(fmt.Sprintf("Request Headers: %s",
+		strings.Join(func() []string {
+			var parts []string
+			for k, values := range req.Header {
+				for _, v := range values {
+					parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+				}
+			}
+			return parts
+		}(), ", ")))
 
 	// Forward the request to the base RoundTripper
 	return ct.Transport.RoundTrip(req)
@@ -58,14 +69,14 @@ var errFailedToGetSecurityToken = fmt.Errorf("failed to get security token from 
 func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticator, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 
-	fmt.Println("Getting newClientAuthenticator function with headers:",
+	logger.Info(fmt.Sprintf("Getting newClientAuthenticator function with headers: %s",
 		strings.Join(func() []string {
 			var parts []string
 			for k, v := range cfg.Headers {
 				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
 			}
 			return parts
-		}(), ", "))
+		}(), ", ")))
 
 	tlsCfg, err := cfg.TLSSetting.LoadTLSConfig()
 	if err != nil {
@@ -95,6 +106,7 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 }
 
 func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
+	ewts.logger.Info("Generating token")
 	tok, err := ewts.ts.Token()
 	if err != nil {
 		return tok, multierr.Combine(
@@ -109,23 +121,25 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTripper, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
 
-	fmt.Println("Getting round tripper function:",
+	o.logger.Info(fmt.Sprintf("Getting round tripper function with headers: %s",
 		strings.Join(func() []string {
 			var parts []string
 			for k, v := range o.headers {
 				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
 			}
 			return parts
-		}(), ", "))
+		}(), ", ")))
 
 	return &CustomTransport{
 		Transport: &oauth2.Transport{
 			Source: errorWrappingTokenSource{
 				ts:       o.clientCredentials.TokenSource(ctx),
+				logger:   o.logger,
 				tokenURL: o.clientCredentials.TokenURL,
 			},
 			Base: base,
 		},
+		logger:  o.logger,
 		Headers: o.headers,
 	}, nil
 }
@@ -133,10 +147,12 @@ func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTr
 // perRPCCredentials returns gRPC PerRPCCredentials that supports "client-credential" OAuth flow. The underneath
 // oauth2.clientcredentials.Config instance will manage tokens performing auto refresh as necessary.
 func (o *clientAuthenticator) perRPCCredentials() (credentials.PerRPCCredentials, error) {
+	o.logger.Info("Got into RPC call")
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
 	return grpcOAuth.TokenSource{
 		TokenSource: errorWrappingTokenSource{
 			ts:       o.clientCredentials.TokenSource(ctx),
+			logger:   o.logger,
 			tokenURL: o.clientCredentials.TokenURL,
 		},
 	}, nil

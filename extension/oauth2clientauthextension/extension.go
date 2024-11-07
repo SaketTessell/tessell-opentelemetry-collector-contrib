@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -36,10 +37,13 @@ type CustomTransport struct {
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	fmt.Print("Got the round trip request")
 	// Add headers from the config to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)
 	}
+
+	fmt.Println("Request Headers:", req.Header)
 
 	// Forward the request to the base RoundTripper
 	return ct.Transport.RoundTrip(req)
@@ -53,6 +57,15 @@ var errFailedToGetSecurityToken = fmt.Errorf("failed to get security token from 
 
 func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticator, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+
+	fmt.Println("Getting newClientAuthenticator function with headers:",
+		strings.Join(func() []string {
+			var parts []string
+			for k, v := range cfg.Headers {
+				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+			}
+			return parts
+		}(), ", "))
 
 	tlsCfg, err := cfg.TLSSetting.LoadTLSConfig()
 	if err != nil {
@@ -95,6 +108,16 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 // also auto refreshes OAuth tokens as needed.
 func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTripper, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
+
+	fmt.Println("Getting round tripper function:",
+		strings.Join(func() []string {
+			var parts []string
+			for k, v := range o.headers {
+				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+			}
+			return parts
+		}(), ", "))
+
 	return &CustomTransport{
 		Transport: &oauth2.Transport{
 			Source: errorWrappingTokenSource{

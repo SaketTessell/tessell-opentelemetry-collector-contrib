@@ -46,6 +46,16 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		req.Header.Set(key, value)
 	}
 
+	if transport, ok := ct.BaseTransport.(*http.Transport); ok && transport.TLSClientConfig != nil {
+		tlsCfg := transport.TLSClientConfig
+		ct.logger.Info("TLS Configuration",
+			zap.String("ServerName", tlsCfg.ServerName),
+			zap.Bool("InsecureSkipVerify", tlsCfg.InsecureSkipVerify),
+		)
+	} else {
+		ct.logger.Info("BaseTransport is not of type *http.Transport or TLSClientConfig is nil")
+	}
+
 	ct.logger.Info(fmt.Sprintf("Request Headers: %s",
 		strings.Join(func() []string {
 			var parts []string

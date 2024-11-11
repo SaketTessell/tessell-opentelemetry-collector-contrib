@@ -55,6 +55,10 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			return parts
 		}(), ", ")))
 
+	ct.logger.Info(fmt.Sprintf("Request URL: %s", req.URL))
+	ct.logger.Info(fmt.Sprintf("Request method: %s", req.Method))
+	ct.logger.Info(fmt.Sprintf("Request body: %s", req.Body))
+
 	return ct.BaseTransport.RoundTrip(req)
 }
 
@@ -70,6 +74,9 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 	logger.Info("Getting newClientAuthenticator function")
 
 	tlsCfg, err := cfg.TLSSetting.LoadTLSConfig()
+
+	logger.Info(fmt.Sprintf("TLS config server name: %s", tlsCfg.ServerName))
+
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +114,12 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 	ewts.logger.Info("Generating token inside extension")
 	tok, err := ewts.ts.Token()
 	if err != nil {
+		ewts.logger.Info("Error occured while generating token in extention")
 		return tok, multierr.Combine(
 			fmt.Errorf("%w (endpoint %q)", errFailedToGetSecurityToken, ewts.tokenURL),
 			err)
 	}
+	ewts.logger.Info(fmt.Sprintf("Token: %s", tok.AccessToken))
 	return tok, nil
 }
 

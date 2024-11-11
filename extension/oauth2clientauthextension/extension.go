@@ -5,6 +5,7 @@ package oauth2clientauthextension // import "github.com/open-telemetry/opentelem
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,7 @@ type errorWrappingTokenSource struct {
 type CustomTransport struct {
 	BaseTransport http.RoundTripper
 	Headers       map[string]string
+	serverName    string
 	logger        *zap.Logger
 }
 
@@ -44,16 +46,6 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	// Add custom headers to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)
-	}
-
-	if transport, ok := ct.BaseTransport.(*http.Transport); ok && transport.TLSClientConfig != nil {
-		tlsCfg := transport.TLSClientConfig
-		ct.logger.Info("TLS Configuration",
-			zap.String("ServerName", tlsCfg.ServerName),
-			zap.Bool("InsecureSkipVerify", tlsCfg.InsecureSkipVerify),
-		)
-	} else {
-		ct.logger.Info("BaseTransport is not of type *http.Transport or TLSClientConfig is nil")
 	}
 
 	ct.logger.Info(fmt.Sprintf("Request Headers: %s",
@@ -73,6 +65,11 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	// Create a custom HTTP client (optional settings can be added here)
 	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				ServerName: ct.serverName,
+			},
+		},
 		Timeout: 10 * time.Second, // Set timeout as per your requirement
 	}
 
@@ -126,6 +123,7 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 		BaseTransport: transport,
 		Headers:       cfg.Headers,
 		logger:        logger,
+		serverName:    tlsCfg.ServerName,
 	}
 
 	return &clientAuthenticator{

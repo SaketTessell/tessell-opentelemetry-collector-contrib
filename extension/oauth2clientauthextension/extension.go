@@ -33,14 +33,13 @@ type errorWrappingTokenSource struct {
 }
 
 type CustomTransport struct {
-	*oauth2.Transport
-	logger  *zap.Logger
-	Headers map[string]string
+	BaseTransport http.RoundTripper
+	Headers       map[string]string
+	logger        *zap.Logger
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ct.logger.Info("Got the round trip request via round tripper")
-	// Add headers from the config to each request
+	// Add custom headers to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)
 	}
@@ -56,8 +55,7 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			return parts
 		}(), ", ")))
 
-	// Forward the request to the base RoundTripper
-	return ct.Transport.RoundTrip(req)
+	return ct.BaseTransport.RoundTrip(req)
 }
 
 // errorWrappingTokenSource implements TokenSource
@@ -69,20 +67,19 @@ var errFailedToGetSecurityToken = fmt.Errorf("failed to get security token from 
 func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticator, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 
-	logger.Info(fmt.Sprintf("Getting newClientAuthenticator function with headers: %s",
-		strings.Join(func() []string {
-			var parts []string
-			for k, v := range cfg.Headers {
-				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
-			}
-			return parts
-		}(), ", ")))
+	logger.Info("Getting newClientAuthenticator function")
 
 	tlsCfg, err := cfg.TLSSetting.LoadTLSConfig()
 	if err != nil {
 		return nil, err
 	}
 	transport.TLSClientConfig = tlsCfg
+
+	customTransport := &CustomTransport{
+		BaseTransport: transport,
+		Headers:       cfg.Headers,
+		logger:        logger,
+	}
 
 	return &clientAuthenticator{
 		clientCredentials: &clientCredentialsConfig{
@@ -95,10 +92,11 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 			},
 			ClientIDFile:     cfg.ClientIDFile,
 			ClientSecretFile: cfg.ClientSecretFile,
+			logger:           logger,
 		},
 		logger: logger,
 		client: &http.Client{
-			Transport: transport,
+			Transport: customTransport,
 			Timeout:   cfg.Timeout,
 		},
 		headers: cfg.Headers,
@@ -106,7 +104,7 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 }
 
 func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
-	ewts.logger.Info("Generating token")
+	ewts.logger.Info("Generating token inside extension")
 	tok, err := ewts.ts.Token()
 	if err != nil {
 		return tok, multierr.Combine(
@@ -121,26 +119,15 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTripper, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
 
-	o.logger.Info(fmt.Sprintf("Getting round tripper function with headers: %s",
-		strings.Join(func() []string {
-			var parts []string
-			for k, v := range o.headers {
-				parts = append(parts, fmt.Sprintf("%s: %s", k, v))
-			}
-			return parts
-		}(), ", ")))
+	o.logger.Info("Getting round tripper function")
 
-	return &CustomTransport{
-		Transport: &oauth2.Transport{
-			Source: errorWrappingTokenSource{
-				ts:       o.clientCredentials.TokenSource(ctx),
-				logger:   o.logger,
-				tokenURL: o.clientCredentials.TokenURL,
-			},
-			Base: base,
+	return &oauth2.Transport{
+		Source: errorWrappingTokenSource{
+			ts:       o.clientCredentials.TokenSource(ctx),
+			logger:   o.logger,
+			tokenURL: o.clientCredentials.TokenURL,
 		},
-		logger:  o.logger,
-		Headers: o.headers,
+		Base: base,
 	}, nil
 }
 

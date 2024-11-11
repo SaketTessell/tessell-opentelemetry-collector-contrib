@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -36,11 +37,13 @@ type clientCredentialsConfig struct {
 
 	ClientIDFile     string
 	ClientSecretFile string
+	logger           *zap.Logger
 }
 
 type clientCredentialsTokenSource struct {
 	ctx    context.Context
 	config *clientCredentialsConfig
+	logger *zap.Logger
 }
 
 // clientCredentialsTokenSource implements TokenSource
@@ -90,10 +93,11 @@ func (c *clientCredentialsConfig) createConfig() (*clientcredentials.Config, err
 }
 
 func (c *clientCredentialsConfig) TokenSource(ctx context.Context) oauth2.TokenSource {
-	return oauth2.ReuseTokenSource(nil, clientCredentialsTokenSource{ctx: ctx, config: c})
+	return oauth2.ReuseTokenSource(nil, clientCredentialsTokenSource{ctx: ctx, config: c, logger: c.logger})
 }
 
 func (ts clientCredentialsTokenSource) Token() (*oauth2.Token, error) {
+	ts.logger.Info("Generating token inside the client credentials config")
 	cfg, err := ts.config.createConfig()
 	if err != nil {
 		return nil, err

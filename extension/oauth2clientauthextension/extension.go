@@ -39,7 +39,7 @@ type CustomTransport struct {
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ct.logger.Info("Got the round trip request via round tripper")
+	ct.logger.Info("Got the round trip request")
 	// Add headers from the config to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)
@@ -58,32 +58,6 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	// Forward the request to the base RoundTripper
 	return ct.Transport.RoundTrip(req)
-}
-
-type headerAddingTransport struct {
-	transport http.RoundTripper
-	logger    *zap.Logger
-	headers   map[string]string
-}
-
-func (h *headerAddingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	h.logger.Info("Got the round trip request via grpc")
-	for key, value := range h.headers {
-		req.Header.Add(key, value)
-	}
-
-	h.logger.Info(fmt.Sprintf("Request Headers: %s",
-		strings.Join(func() []string {
-			var parts []string
-			for k, values := range req.Header {
-				for _, v := range values {
-					parts = append(parts, fmt.Sprintf("%s: %s", k, v))
-				}
-			}
-			return parts
-		}(), ", ")))
-
-	return h.transport.RoundTrip(req)
 }
 
 // errorWrappingTokenSource implements TokenSource
@@ -173,19 +147,8 @@ func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTr
 // perRPCCredentials returns gRPC PerRPCCredentials that supports "client-credential" OAuth flow. The underneath
 // oauth2.clientcredentials.Config instance will manage tokens performing auto refresh as necessary.
 func (o *clientAuthenticator) perRPCCredentials() (credentials.PerRPCCredentials, error) {
-	o.logger.Info("Get grpcOAuth token source")
-	clientWithHeaders := &http.Client{
-		Transport: &headerAddingTransport{
-			transport: o.client.Transport,
-			logger:    o.logger,
-			headers:   o.headers,
-		},
-		Timeout: o.client.Timeout,
-	}
-
-	// Pass the custom HTTP client into the context.
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, clientWithHeaders)
-
+	o.logger.Info("Got into RPC call")
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
 	return grpcOAuth.TokenSource{
 		TokenSource: errorWrappingTokenSource{
 			ts:       o.clientCredentials.TokenSource(ctx),

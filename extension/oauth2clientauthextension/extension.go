@@ -43,10 +43,7 @@ type CustomTransport struct {
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Add custom headers to each request
-	for key, value := range ct.Headers {
-		req.Header.Set(key, value)
-	}
+	req.Host = ct.serverName
 
 	ct.logger.Info(fmt.Sprintf("Request Headers: %s",
 		strings.Join(func() []string {

@@ -39,7 +39,7 @@ type CustomTransport struct {
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ct.logger.Info("Got the round trip request")
+	ct.logger.Info("Got the round trip request via round tripper")
 	// Add headers from the config to each request
 	for key, value := range ct.Headers {
 		req.Header.Set(key, value)

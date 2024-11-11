@@ -6,10 +6,8 @@ package oauth2clientauthextension // import "github.com/open-telemetry/opentelem
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -61,35 +59,7 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	ct.logger.Info(fmt.Sprintf("Request method: %s", req.Method))
 	ct.logger.Info(fmt.Sprintf("Request body: %s", req.Body))
 
-	// Create a custom HTTP client (optional settings can be added here)
-	client := &http.Client{
-		Timeout: 10 * time.Second, // Set timeout as per your requirement
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		ct.logger.Info("Custom RoundTrip encountered error", zap.Error(err))
-		return nil, err
-	}
-
-	ct.logger.Info("Custom RoundTrip completed successfully", zap.Int("status", resp.StatusCode))
-
-	// Read and log the response body
-	defer resp.Body.Close() // Ensure the response body is closed after reading
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		ct.logger.Info("Error reading response body", zap.Error(err))
-		return resp, err
-	}
-
-	// Log the response body
-	bodyString := string(bodyBytes)
-	ct.logger.Info("Response Body:", zap.String("body", bodyString))
-
-	resp.Body = io.NopCloser(strings.NewReader(bodyString))
-
-	return resp, nil
+	return ct.BaseTransport.RoundTrip(req)
 }
 
 // errorWrappingTokenSource implements TokenSource

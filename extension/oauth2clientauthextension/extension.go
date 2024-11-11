@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -34,31 +33,12 @@ type errorWrappingTokenSource struct {
 
 type CustomTransport struct {
 	BaseTransport http.RoundTripper
-	Headers       map[string]string
+	serverName    string
 	logger        *zap.Logger
 }
 
 func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Add custom headers to each request
-	for key, value := range ct.Headers {
-		req.Header.Set(key, value)
-	}
-
-	ct.logger.Info(fmt.Sprintf("Request Headers: %s",
-		strings.Join(func() []string {
-			var parts []string
-			for k, values := range req.Header {
-				for _, v := range values {
-					parts = append(parts, fmt.Sprintf("%s: %s", k, v))
-				}
-			}
-			return parts
-		}(), ", ")))
-
-	ct.logger.Info(fmt.Sprintf("Request URL: %s", req.URL))
-	ct.logger.Info(fmt.Sprintf("Request method: %s", req.Method))
-	ct.logger.Info(fmt.Sprintf("Request body: %s", req.Body))
-
+	req.Host = ct.serverName
 	return ct.BaseTransport.RoundTrip(req)
 }
 
@@ -84,7 +64,7 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 
 	customTransport := &CustomTransport{
 		BaseTransport: transport,
-		Headers:       cfg.Headers,
+		serverName:    tlsCfg.ServerName,
 		logger:        logger,
 	}
 

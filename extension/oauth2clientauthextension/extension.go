@@ -50,9 +50,6 @@ var errFailedToGetSecurityToken = fmt.Errorf("failed to get security token from 
 
 func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticator, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-
-	logger.Info("Getting newClientAuthenticator function")
-
 	tlsCfg, err := cfg.TLSSetting.LoadTLSConfig()
 
 	logger.Info(fmt.Sprintf("TLS config server name: %s", tlsCfg.ServerName))
@@ -91,15 +88,12 @@ func newClientAuthenticator(cfg *Config, logger *zap.Logger) (*clientAuthenticat
 }
 
 func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
-	ewts.logger.Info("Generating token inside extension")
 	tok, err := ewts.ts.Token()
 	if err != nil {
-		ewts.logger.Info("Error occured while generating token in extention")
 		return tok, multierr.Combine(
 			fmt.Errorf("%w (endpoint %q)", errFailedToGetSecurityToken, ewts.tokenURL),
 			err)
 	}
-	ewts.logger.Info(fmt.Sprintf("Token: %s", tok.AccessToken))
 	return tok, nil
 }
 
@@ -107,8 +101,6 @@ func (ewts errorWrappingTokenSource) Token() (*oauth2.Token, error) {
 // also auto refreshes OAuth tokens as needed.
 func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTripper, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
-
-	o.logger.Info("Getting round tripper function")
 
 	return &oauth2.Transport{
 		Source: errorWrappingTokenSource{
@@ -123,7 +115,6 @@ func (o *clientAuthenticator) roundTripper(base http.RoundTripper) (http.RoundTr
 // perRPCCredentials returns gRPC PerRPCCredentials that supports "client-credential" OAuth flow. The underneath
 // oauth2.clientcredentials.Config instance will manage tokens performing auto refresh as necessary.
 func (o *clientAuthenticator) perRPCCredentials() (credentials.PerRPCCredentials, error) {
-	o.logger.Info("Got into RPC call")
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, o.client)
 	return grpcOAuth.TokenSource{
 		TokenSource: errorWrappingTokenSource{
